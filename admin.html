@@ -313,6 +313,7 @@
     <button class="tab-btn" data-tab="users">Пользователи</button>
     <button class="tab-btn" data-tab="invoices">Платежи</button>
     <button class="tab-btn" data-tab="health">Здоровье</button>
+    <button class="tab-btn" data-tab="errors">Ошибки <span id="errors-badge" class="badge red" style="display:none; margin-left:6px;">0</span></button>
     <div style="height: 24px;"></div>
     <a class="back-link" href="account.html">← Назад в кабинет</a>
   </aside>
@@ -417,6 +418,21 @@
       <div id="health-content" class="loading">Загрузка…</div>
     </section>
 
+    <!-- ─── Errors ─────────────────────────────────────────────── -->
+    <section id="tab-errors" class="tab-content" style="display:none;">
+      <h1 class="admin-h1">Журнал ошибок</h1>
+      <p class="admin-sub">Все 5xx из бэкенда. Старше 30 дней автоматически чистятся.</p>
+      <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+        <label style="display:inline-flex; align-items:center; gap:6px;">
+          <input type="checkbox" id="errors-only-unseen" checked />
+          Только непрочитанные
+        </label>
+        <button class="btn-secondary" id="errors-refresh">Обновить</button>
+        <button class="btn-secondary" id="errors-mark-all">Отметить все прочитанными</button>
+      </div>
+      <div id="errors-list" class="loading">Загрузка…</div>
+    </section>
+
   </main>
 </div>
 
@@ -483,6 +499,7 @@
       if (tab === 'users') loadUsers();
       if (tab === 'invoices') loadInvoices();
       if (tab === 'health') loadHealth();
+      if (tab === 'errors') loadErrors();
     });
   });
 
@@ -687,11 +704,13 @@
   async function loadHealth() {
     try {
       const d = await apiAdmin('/health');
+      updateErrorsBadge(d.unseenErrors || 0);
       document.getElementById('health-content').innerHTML = `
         <div class="kpi-grid">
           ${kpi('БД', d.dbOk ? 'OK' : 'FAIL', 'подключение к Postgres', d.dbOk ? '' : 'accent')}
           ${kpi('Uptime', Math.floor(d.uptimeSec / 3600) + 'ч ' + Math.floor((d.uptimeSec % 3600) / 60) + 'м', 'с последнего рестарта')}
           ${kpi('Диктовок за 24ч', d.dictationsLast24h, 'всего обработано')}
+          ${kpi('Непрочитанных ошибок', d.unseenErrors || 0, 'смотри во вкладке «Ошибки»', (d.unseenErrors || 0) > 0 ? 'accent' : '')}
           ${kpi('Последняя диктовка', d.lastDictation ? fmtDateTime(d.lastDictation) : '—', 'кто-то реально пользуется')}
           ${kpi('Последняя оплата', d.lastPaidInvoice ? fmtDateTime(d.lastPaidInvoice.paidAt) : '—', d.lastPaidInvoice ? ('InvId ' + d.lastPaidInvoice.id) : 'пока никто не платил')}
         </div>
@@ -701,8 +720,98 @@
     }
   }
 
+  // ─── Errors ──────────────────────────────────────────────────────────
+  function updateErrorsBadge(count) {
+    const b = document.getElementById('errors-badge');
+    if (count > 0) {
+      b.textContent = count > 99 ? '99+' : String(count);
+      b.style.display = '';
+    } else {
+      b.style.display = 'none';
+    }
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    })[c]);
+  }
+
+  async function loadErrors() {
+    const onlyUnseen = document.getElementById('errors-only-unseen').checked;
+    const list = document.getElementById('errors-list');
+    list.innerHTML = '<div class="loading">Загрузка…</div>';
+    try {
+      const d = await apiAdmin('/errors?onlyUnseen=' + (onlyUnseen ? '1' : '0') + '&limit=100');
+      if (!d.errors.length) {
+        list.innerHTML = '<div class="empty-state" style="padding:32px; text-align:center;">' +
+          (onlyUnseen ? 'Непрочитанных ошибок нет — всё чисто 🎉' : 'Журнал ошибок пуст') +
+          '</div>';
+        if (onlyUnseen) updateErrorsBadge(0);
+        return;
+      }
+      list.innerHTML = d.errors.map(e => `
+        <div class="error-card" data-id="${e.id}" style="
+          border:1px solid rgba(0,0,0,0.1);
+          border-radius:10px;
+          padding:14px 16px;
+          margin-bottom:10px;
+          background:${e.seen ? '#fafafa' : '#fff7ed'};
+        ">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div>
+              <span class="badge ${e.statusCode >= 500 ? 'red' : 'yellow'}">${e.statusCode || e.level}</span>
+              <strong style="margin-left:8px; font-family:monospace;">${escapeHtml(e.method || '')} ${escapeHtml(e.path || '')}</strong>
+              ${e.seen ? '' : '<span class="badge yellow" style="margin-left:8px;">новая</span>'}
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span style="color:#888; font-size:13px;">${fmtDateTime(e.createdAt)}</span>
+              ${e.seen ? '' : '<button class="btn-secondary mark-seen" data-id="' + e.id + '" style="padding:4px 10px; font-size:13px;">Отметить ✓</button>'}
+            </div>
+          </div>
+          <div style="margin-top:8px; color:#444; font-family:monospace; font-size:13px; white-space:pre-wrap; word-break:break-word;">${escapeHtml(e.message)}</div>
+          ${e.userId ? '<div style="margin-top:6px; color:#888; font-size:12px;">userId: <code>' + escapeHtml(e.userId) + '</code></div>' : ''}
+          ${e.stack ? '<details style="margin-top:8px;"><summary style="cursor:pointer; color:#888; font-size:12px;">Stack trace</summary><pre style="background:#f5f5f5; padding:10px; border-radius:6px; font-size:11px; overflow-x:auto; white-space:pre-wrap;">' + escapeHtml(e.stack) + '</pre></details>' : ''}
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.mark-seen').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          try {
+            await apiAdmin('/errors/' + id + '/seen', { method: 'POST' });
+            loadErrors();
+            // bagde обновляем через health (он же даёт count)
+            apiAdmin('/health').then(d => updateErrorsBadge(d.unseenErrors || 0)).catch(() => {});
+          } catch (e) {
+            showToast('Не удалось пометить: ' + e.message, 'danger');
+          }
+        });
+      });
+    } catch (e) {
+      list.innerHTML = '<div class="loading">' + e.message + '</div>';
+    }
+  }
+
+  document.getElementById('errors-refresh').addEventListener('click', loadErrors);
+  document.getElementById('errors-only-unseen').addEventListener('change', loadErrors);
+  document.getElementById('errors-mark-all').addEventListener('click', async () => {
+    if (!confirm('Отметить все ошибки как прочитанные?')) return;
+    try {
+      const r = await apiAdmin('/errors/seen-all', { method: 'POST' });
+      showToast('Отмечено: ' + r.marked);
+      loadErrors();
+      updateErrorsBadge(0);
+    } catch (e) {
+      showToast('Не удалось: ' + e.message, 'danger');
+    }
+  });
+
   // ─── Init ────────────────────────────────────────────────────────────
   loadOverview();
+  // Подтянем badge ошибок при загрузке страницы (без открытия Health-вкладки).
+  apiAdmin('/health').then(d => updateErrorsBadge(d.unseenErrors || 0)).catch(() => {});
 
   // Guard: если не админ — backend вернёт 403 и api.js покажет toast
   apiAdmin('/overview').catch(err => {
