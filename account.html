@@ -490,15 +490,19 @@
     return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
   }
 
-  function daysUntilFirstOfNextMonth() {
+  function daysUntil(date) {
     const now = new Date();
-    const firstNext = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return Math.max(0, Math.ceil((firstNext - now) / (1000 * 60 * 60 * 24)));
+    const target = new Date(date);
+    return Math.max(0, Math.ceil((target - now) / (1000 * 60 * 60 * 24)));
   }
-  function firstOfNextMonthLabel() {
-    const now = new Date();
-    const firstNext = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return firstNext.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  function dayMonthLabel(date) {
+    return new Date(date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
+  function pluralDays(n) {
+    const mod10 = n % 10, mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return 'день';
+    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return 'дня';
+    return 'дней';
   }
   function dateLabel(s) {
     if (!s) return '—';
@@ -545,12 +549,16 @@
       document.getElementById('usage-text').textContent = `${usedStr} / ${limitMinutes} минут`;
       document.getElementById('usage-bar').style.width = `${pct}%`;
 
-      // Когда лимит обновится
-      const days = daysUntilFirstOfNextMonth();
+      // Когда лимит обновится — бэкенд теперь возвращает periodEnd:
+      //   для платных = currentPeriodEnd (когда следующее списание)
+      //   для FREE = 1 число следующего календарного месяца
+      const periodEnd = data.usage?.periodEnd ?? data.usage?.monthStart;
+      const days = periodEnd ? daysUntil(periodEnd) : 0;
+      const label = periodEnd ? dayMonthLabel(periodEnd) : '';
       document.getElementById('usage-reset').textContent =
         days === 0 ? 'обновится сегодня' :
         days === 1 ? 'обновится завтра' :
-        `обновится через ${days} ${days < 5 ? 'дня' : 'дней'} · ${firstOfNextMonthLabel()}`;
+        `обновится через ${days} ${pluralDays(days)} · ${label}`;
 
       // Дата следующего списания (для платников)
       if (plan !== 'FREE' && data.subscription?.currentPeriodEnd) {
