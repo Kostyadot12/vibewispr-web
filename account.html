@@ -356,7 +356,7 @@
           Сменить тариф
         </a>
         <button id="cancel-btn" class="btn-danger-text" style="display:none;">
-          Отменить подписку
+          Отключить автопродление
         </button>
       </div>
     </div>
@@ -566,8 +566,8 @@
         document.getElementById('next-charge-date').textContent = dateLabel(data.subscription.currentPeriodEnd);
         document.getElementById('next-charge-amount').textContent =
           data.subscription.cancelAtPeriodEnd
-            ? 'Подписка отменится после этой даты'
-            : `Спишется ${planPriceRub[plan].toLocaleString('ru-RU')} ₽`;
+            ? 'Автопродление отключено. После этой даты — Free.'
+            : `Автосписание ${planPriceRub[plan].toLocaleString('ru-RU')} ₽ с привязанной карты`;
       }
 
       // Upgrade-push при >70% использования (Free/Lite/Pro)
@@ -653,7 +653,7 @@
 
   // ─── Отмена подписки ───────────────────────────────────────────────
   document.getElementById('cancel-btn').addEventListener('click', async () => {
-    if (!confirm('Отменить подписку? Доступ сохранится до конца оплаченного периода.')) return;
+    if (!confirm('Отключить автопродление?\n\nСледующее автосписание не произойдёт. Доступ к платному тарифу сохранится до конца уже оплаченного периода. После этого аккаунт перейдёт на Free.\n\nДеньги за текущий оплаченный период не возвращаются — ты пользуешься им до конца.')) return;
     try {
       const res = await VF.cancelSubscription();
       VF.showToast(res.message || 'Подписка отменена', 'info', 4500);
