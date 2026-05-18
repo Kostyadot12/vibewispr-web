@@ -71,11 +71,22 @@
       </div>
 
       <label class="consent-row">
-        <input type="checkbox" id="consent" required />
+        <input type="checkbox" id="consent-terms" required />
         <span>
-          Я принимаю <a href="terms.html" target="_blank">договор-оферту</a> и
-          <a href="privacy.html" target="_blank">политику конфиденциальности</a>.
-          Понимаю, что платные тарифы — это <strong>подписка с автоматическим ежемесячным списанием</strong>, и могу отменить её в любой момент в личном кабинете.
+          Я принимаю <a href="terms.html" target="_blank">договор-оферту</a>
+          и <a href="refund.html" target="_blank">условия возврата</a>.
+          Понимаю, что платные тарифы — это <strong>подписка с автоматическим
+          ежемесячным списанием</strong>, и могу отменить её в любой момент
+          в личном кабинете.
+        </span>
+      </label>
+
+      <label class="consent-row">
+        <input type="checkbox" id="consent-pd" required />
+        <span>
+          Я даю согласие на обработку моих персональных данных в соответствии
+          с <a href="privacy.html" target="_blank">политикой конфиденциальности</a>
+          и Федеральным законом № 152-ФЗ «О персональных данных».
         </span>
       </label>
 
@@ -119,8 +130,12 @@
     const password = form.password.value;
     const password2 = form.password2.value;
 
-    if (!document.getElementById('consent').checked) {
-      showError('Чтобы создать аккаунт, нужно принять условия оферты и политику конфиденциальности');
+    if (!document.getElementById('consent-terms').checked) {
+      showError('Чтобы создать аккаунт, нужно принять условия оферты');
+      return;
+    }
+    if (!document.getElementById('consent-pd').checked) {
+      showError('Для создания аккаунта необходимо согласие на обработку персональных данных');
       return;
     }
     if (!email || !password) {
