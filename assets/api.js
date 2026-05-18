@@ -1,8 +1,9 @@
 /* ============================================================
    ВайбВиспр Web — клиент API.
-   - Хранит access/refresh токены в localStorage.
-   - Автоматически рефрешит access перед запросом если он почти истёк.
-   - Показывает тосты при ошибках.
+   - Access-токен хранится в localStorage (короткий, 15 мин).
+   - Refresh-токен лежит в HttpOnly cookie — JS его не видит и не может
+     украсть через XSS. Браузер сам шлёт его на /api/auth/* endpoints.
+   - Автоматически рефрешит access при 401.
    ============================================================ */
 
 // Авто-детект окружения:
@@ -17,26 +18,27 @@ const API_BASE = window.VF_API_BASE || (
 );
 const STORAGE = {
   access:  'vf_access_token',
-  refresh: 'vf_refresh_token',
   user:    'vf_user',
 };
 
+// Миграция: до перевода на HttpOnly cookie веб хранил refresh в localStorage.
+// Если он там остался — удаляем, чтобы не висел в незащищённом хранилище.
+// Сервер сам выдаст cookie при следующем login/refresh.
+try { localStorage.removeItem('vf_refresh_token'); } catch {}
+
 const auth = {
   get accessToken()  { return localStorage.getItem(STORAGE.access);  },
-  get refreshToken() { return localStorage.getItem(STORAGE.refresh); },
   get user()         {
     try { return JSON.parse(localStorage.getItem(STORAGE.user) || 'null'); }
     catch { return null; }
   },
   isAuthenticated()  { return !!this.accessToken; },
-  save(accessToken, refreshToken, user) {
-    if (accessToken)  localStorage.setItem(STORAGE.access,  accessToken);
-    if (refreshToken) localStorage.setItem(STORAGE.refresh, refreshToken);
-    if (user)         localStorage.setItem(STORAGE.user,    JSON.stringify(user));
+  save(accessToken, user) {
+    if (accessToken)  localStorage.setItem(STORAGE.access, accessToken);
+    if (user)         localStorage.setItem(STORAGE.user,   JSON.stringify(user));
   },
   clear() {
     localStorage.removeItem(STORAGE.access);
-    localStorage.removeItem(STORAGE.refresh);
     localStorage.removeItem(STORAGE.user);
   },
 };
@@ -54,13 +56,12 @@ function showToast(message, variant = 'info', ttl = 3500) {
 }
 
 async function refreshAccess() {
-  const refreshToken = auth.refreshToken;
-  if (!refreshToken) throw new Error('no_refresh_token');
-
+  // Refresh-токен сидит в HttpOnly cookie — браузер сам его шлёт
+  // благодаря credentials:'include'. Body отправлять не нужно.
   const resp = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
   });
   if (!resp.ok) {
     auth.clear();
@@ -74,6 +75,7 @@ async function refreshAccess() {
 /**
  * Универсальный fetch к нашему API с Bearer-токеном.
  * При 401 пробует один раз обновить access и повторить запрос.
+ * credentials:'include' нужен чтобы refresh-cookie ходила.
  */
 async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -83,14 +85,23 @@ async function apiFetch(path, options = {}) {
   const token = auth.accessToken;
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  let resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let resp = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    credentials: 'include',
+    headers,
+  });
 
-  // Token expired? Попробуем рефрешнуть и повторить.
-  if (resp.status === 401 && auth.refreshToken) {
+  // Token expired? Попробуем рефрешнуть и повторить. Cookie ходит сама —
+  // нет нужды проверять есть ли refresh локально.
+  if (resp.status === 401) {
     try {
       const newAccess = await refreshAccess();
       headers.set('Authorization', `Bearer ${newAccess}`);
-      resp = await fetch(`${API_BASE}${path}`, { ...options, headers });
+      resp = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        credentials: 'include',
+        headers,
+      });
     } catch {
       // refresh не сработал — попадаем в ветку «не авторизован» ниже.
     }
@@ -104,6 +115,7 @@ async function register(email, password, name) {
   if (name) body.name = name;
   const resp = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
@@ -123,6 +135,7 @@ async function register(email, password, name) {
 async function verifyEmail(email, code) {
   const resp = await fetch(`${API_BASE}/auth/verify-email`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, code }),
   });
@@ -134,7 +147,7 @@ async function verifyEmail(email, code) {
     err.remainingAttempts = data?.remainingAttempts;
     throw err;
   }
-  auth.save(data.accessToken, data.refreshToken, data.user);
+  auth.save(data.accessToken, data.user);
   return data;
 }
 
@@ -154,6 +167,7 @@ async function resendVerificationCode(email) {
 async function login(email, password) {
   const resp = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
@@ -172,22 +186,20 @@ async function login(email, password) {
     const msg = data?.message || 'Неверный email или пароль';
     throw new Error(msg);
   }
-  auth.save(data.accessToken, data.refreshToken, data.user);
+  auth.save(data.accessToken, data.user);
   return data;
 }
 
 async function logout() {
-  const refreshToken = auth.refreshToken;
-  // Best-effort: даже если запрос упал, локально всё стираем.
-  if (refreshToken) {
-    try {
-      await fetch(`${API_BASE}/auth/logout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-    } catch {}
-  }
+  // Best-effort: даже если запрос упал, локально access стираем.
+  // Сервер очистит cookie сам через Set-Cookie с истёкшим Max-Age.
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch {}
   auth.clear();
 }
 
@@ -228,6 +240,7 @@ async function updateProfile(name) {
 async function forgotPassword(email) {
   const resp = await fetch(`${API_BASE}/auth/forgot-password`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
@@ -239,6 +252,7 @@ async function forgotPassword(email) {
 async function resetPassword(token, newPassword) {
   const resp = await fetch(`${API_BASE}/auth/reset-password`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, newPassword }),
   });
