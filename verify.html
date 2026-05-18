@@ -63,6 +63,32 @@
   margin-bottom: 8px;
 }
 .email-hint strong{ color: var(--ink); }
+.spam-hint{
+  margin-top: 22px;
+  padding: 14px 16px;
+  background: rgba(217, 206, 181, 0.20);
+  border: 1px dashed rgba(42, 36, 27, 0.18);
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--warm);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.spam-hint .spam-icon{
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--coral-deep);
+}
+.spam-hint .spam-text strong{ color: var(--ink); font-weight: 600; }
+.spam-hint .spam-text .small{
+  display: block;
+  margin-top: 4px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
 </style>
 </head>
 <body>
@@ -121,6 +147,14 @@
     <div class="resend-row">
       Не пришёл код?
       <button type="button" id="resend-btn">Прислать ещё раз</button>
+    </div>
+
+    <div class="spam-hint">
+      <span class="spam-icon">✦</span>
+      <div class="spam-text">
+        <strong>Письма не видно?</strong> Загляни в папку «Спам» — иногда коды залетают туда, особенно у Mail.ru, Yandex и Rambler.
+        <span class="small">Отправитель: <code>vibewispr@yandex.ru</code> · тема «Код подтверждения ВайбВиспр».</span>
+      </div>
     </div>
   </div>
 </main>
