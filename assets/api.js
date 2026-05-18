@@ -19,12 +19,12 @@ const API_BASE = window.VF_API_BASE || (
 const STORAGE = {
   access:  'vf_access_token',
   user:    'vf_user',
+  // Legacy: до перевода на HttpOnly cookie веб хранил refresh в localStorage.
+  // Если он там остался — НЕ удаляем сразу, иначе залогиненные юзеры
+  // отвалятся через 15 мин (cookie у них ещё нет). Используем legacy refresh
+  // один раз в refreshAccess() — сервер вернёт Set-Cookie, и тогда удалим.
+  legacyRefresh: 'vf_refresh_token',
 };
-
-// Миграция: до перевода на HttpOnly cookie веб хранил refresh в localStorage.
-// Если он там остался — удаляем, чтобы не висел в незащищённом хранилище.
-// Сервер сам выдаст cookie при следующем login/refresh.
-try { localStorage.removeItem('vf_refresh_token'); } catch {}
 
 const auth = {
   get accessToken()  { return localStorage.getItem(STORAGE.access);  },
@@ -40,6 +40,7 @@ const auth = {
   clear() {
     localStorage.removeItem(STORAGE.access);
     localStorage.removeItem(STORAGE.user);
+    localStorage.removeItem(STORAGE.legacyRefresh);
   },
 };
 
@@ -56,17 +57,27 @@ function showToast(message, variant = 'info', ttl = 3500) {
 }
 
 async function refreshAccess() {
-  // Refresh-токен сидит в HttpOnly cookie — браузер сам его шлёт
-  // благодаря credentials:'include'. Body отправлять не нужно.
+  // Refresh-токен сидит в HttpOnly cookie — браузер сам его шлёт.
+  // Для уже залогиненных юзеров (до перехода на cookie) — fallback на legacy
+  // refresh из localStorage один раз: сервер вернёт Set-Cookie и мы сотрём
+  // legacy. После этого все последующие refresh идут только через cookie.
+  let legacy = null;
+  try { legacy = localStorage.getItem(STORAGE.legacyRefresh); } catch {}
+  const body = legacy ? JSON.stringify({ refreshToken: legacy }) : undefined;
+
   const resp = await fetch(`${API_BASE}/auth/refresh`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
+    body,
   });
   if (!resp.ok) {
     auth.clear();
+    try { localStorage.removeItem(STORAGE.legacyRefresh); } catch {}
     throw new Error('refresh_failed');
   }
+  // Успех — cookie встал. Можно безопасно стереть legacy.
+  try { localStorage.removeItem(STORAGE.legacyRefresh); } catch {}
   const { accessToken } = await resp.json();
   localStorage.setItem(STORAGE.access, accessToken);
   return accessToken;
