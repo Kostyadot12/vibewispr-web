@@ -713,3 +713,118 @@ a { color: inherit; text-decoration: none; }
   text-underline-offset: 2px;
 }
 .consent-row a:hover{ text-decoration-color: var(--coral-deep); }
+
+/* ============================================================
+   Mobile-адаптив
+   Существующие точечные media queries выше уже покрывают navbar,
+   sections, cabinet и pricing. Здесь добавляем то что не было
+   адаптировано: legal-страницы, footer, auth-card, toast,
+   текстовые блоки + дополнительный breakpoint для узких экранов.
+   ============================================================ */
+
+/* Тач-устройства до 760px (типичные таблеты + мобильные) */
+@media (max-width: 760px){
+  /* Legal-страницы — шапка съедала весь экран; уменьшаем h1 и padding */
+  .legal{ padding: 88px 20px 56px; }
+  .legal-head{ margin-bottom: 28px; padding-bottom: 22px; }
+  .legal-head h1{
+    font-size: clamp(36px, 8vw, 48px);
+    letter-spacing: -1px;
+  }
+  .legal-body{ font-size: 14.5px; }
+  .legal-body .legal-lede{
+    font-size: 16px;
+    margin-bottom: 26px;
+    padding-bottom: 18px;
+  }
+  .legal-body h2{ font-size: 19px; margin: 30px 0 10px; }
+
+  /* Таблица реквизитов на мобильном — две колонки 50/50 ломаются,
+     ключ переносим над значением для нормального чтения */
+  .legal-body table.rq td{
+    display: block;
+    width: 100% !important;
+    padding: 8px 0 4px;
+    border-bottom: none;
+  }
+  .legal-body table.rq td:first-child{
+    padding-top: 14px;
+    font-size: 10.5px;
+  }
+  .legal-body table.rq td:last-child{
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--hair);
+  }
+  .legal-body table.rq tr:last-child td:last-child{ border-bottom: 0; }
+
+  /* Длинные URL и реквизиты не должны выпирать за экран */
+  .legal-body p,
+  .legal-body li,
+  .legal-body table.rq td:last-child{ overflow-wrap: anywhere; }
+
+  /* Footer — вертикальная компоновка */
+  .foot{
+    padding: 22px 20px 26px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    margin-top: 30px;
+  }
+  .foot-links{ gap: 14px 18px; }
+
+  /* Auth-card — поджимаем поля и шапку */
+  .auth-shell{ padding: 88px 16px 48px; }
+  .auth-card{ padding: 28px 22px 22px; }
+  .auth-card-head{ margin-bottom: 22px; }
+  .auth-card-head h1{ font-size: 26px; }
+  .consent-row{ font-size: 12px; }
+
+  /* Toast не должен вылезать за экран */
+  .toast{
+    max-width: calc(100vw - 32px);
+    text-align: center;
+    padding: 11px 18px;
+    bottom: 20px;
+  }
+
+  /* Action-row в кабинете — кнопки в полную ширину для удобства тапа */
+  .action-row{ flex-direction: column; align-items: stretch; }
+  .action-row .btn-primary,
+  .action-row .btn-secondary{ width: 100%; }
+}
+
+/* Узкие мобильные (iPhone SE/Mini, Android compact) — до 480px */
+@media (max-width: 480px){
+  .legal{ padding: 80px 16px 48px; }
+  .legal-head h1{ font-size: clamp(30px, 9vw, 38px); }
+  .legal-body{ font-size: 14px; }
+  .legal-body h2{ font-size: 17px; }
+
+  .auth-card{ padding: 24px 18px 20px; }
+  .auth-card-head h1{ font-size: 22px; }
+
+  /* Section heading чуть мельче — clamp(38px, 5.5vw, 64px) на 360px = 38px,
+     для мелких экранов это всё ещё крупно. Подкручиваем минимум. */
+  .section-h2{ font-size: clamp(30px, 9vw, 42px); }
+  .section{ padding: 64px 16px; }
+
+  /* Cabinet — мельче шапка */
+  .cabinet{ padding: 88px 16px 48px; }
+  .cabinet-head{ margin-bottom: 26px; }
+  .cabinet-head h1{ font-size: clamp(28px, 9vw, 40px); }
+
+  /* Карточки в кабинете — меньше padding */
+  .card{ padding: 20px 18px; }
+  .card h2{ font-size: 22px; }
+
+  /* Footer monospace мельче на узком */
+  .foot{ font-size: 10.5px; padding: 20px 16px 24px; }
+}
+
+/* iOS Safari prefers tap-targets ≥44x44px. .btn-* уже это даёт (padding 13-14px
+   + font 14-15px → ~46-48px высоты). Сохраняем это правило для остальных
+   мелких ссылок-кнопок и инпутов */
+@media (hover: none) and (pointer: coarse){
+  .nav-signin{ padding: 12px 16px; }
+  .field input{ font-size: 16px; /* iOS не зумит при focus если >=16px */ }
+}
